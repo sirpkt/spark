@@ -247,6 +247,22 @@ class SQLQuerySuite extends QueryTest with SQLTestUtils {
     checkAnswer(query, Row(1, 1) :: Nil)
   }
 
+  test("Date add/subtract Integer") {
+    val df = Seq(("2015-05-01", 1), ("2015-08-31", 2)).toDF("d1", "c1")
+    df.registerTempTable("table1")
+
+    val query = sql(
+      """
+        |SELECT cast(d1 as date) + 3 FROM table1
+      """.stripMargin)
+    checkAnswer(query, Row(Date.valueOf("2015-05-04"))::Row(Date.valueOf("2015-09-03"))::Nil)
+    val query2 = sql(
+      """
+        |SELECT cast(d1 as date) - 3 FROM table1
+      """.stripMargin)
+    checkAnswer(query2, Row(Date.valueOf("2015-04-28"))::Row(Date.valueOf("2015-08-28"))::Nil)
+  }
+
   test("explode nested Field") {
     Seq(NestedArray1(NestedArray2(Seq(1, 2, 3)))).toDF.registerTempTable("nestedArray")
     checkAnswer(

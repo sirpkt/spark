@@ -23,6 +23,7 @@ import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.types._
+import org.apache.spark.unsafe.types._
 
 
 /**
@@ -664,8 +665,12 @@ object HiveTypeCoercion {
         Cast(TimeAdd(r, l), r.dataType)
       case Add(l, r @ CalendarIntervalType()) if acceptedTypes.contains(l.dataType) =>
         Cast(TimeAdd(l, r), l.dataType)
+      case Add(l @ DateType(), r @ IntegerType()) =>
+        Cast(DateAdd(l, r), l.dataType)
       case Subtract(l, r @ CalendarIntervalType()) if acceptedTypes.contains(l.dataType) =>
         Cast(TimeSub(l, r), l.dataType)
+      case Subtract(l @ DateType(), r @ IntegerType()) =>
+        Cast(DateSub(l, r), l.dataType)
     }
   }
 

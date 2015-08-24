@@ -421,6 +421,7 @@ class HiveTypeCoercionSuite extends PlanTest {
     val timestamp = Literal(new Timestamp(0L))
     val interval = Literal(new CalendarInterval(0, 0))
     val str = Literal("2015-01-01")
+    val interval2 = Literal(new Integer(2))
 
     ruleTest(dateTimeOperations, Add(date, interval), Cast(TimeAdd(date, interval), DateType))
     ruleTest(dateTimeOperations, Add(interval, date), Cast(TimeAdd(date, interval), DateType))
@@ -439,6 +440,10 @@ class HiveTypeCoercionSuite extends PlanTest {
     // interval operations should not be effected
     ruleTest(dateTimeOperations, Add(interval, interval), Add(interval, interval))
     ruleTest(dateTimeOperations, Subtract(interval, interval), Subtract(interval, interval))
+
+    // add/subtract integer to date
+    ruleTest(dateTimeOperations, Add(date, interval2), Cast(DateAdd(date, interval2), DateType))
+    ruleTest(dateTimeOperations, Subtract(date, interval2), Cast(DateSub(date, interval2), DateType))
   }
 
 
