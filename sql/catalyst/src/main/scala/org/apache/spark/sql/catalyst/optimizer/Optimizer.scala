@@ -89,6 +89,7 @@ object OuterJoinToInnerJoin extends Rule[LogicalPlan] with PredicateHelper {
 
   /**
    * Check the given expression is rejecting nulls
+   * TODO: add more cases to accept null
    * @return true/false
    */
   private def isRejectNull(condition: Expression): Boolean = {
