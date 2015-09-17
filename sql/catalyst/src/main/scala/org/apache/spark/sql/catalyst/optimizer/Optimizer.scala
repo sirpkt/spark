@@ -40,6 +40,8 @@ object DefaultOptimizer extends Optimizer {
       ReplaceDistinctWithAggregate,
       RemoveLiteralFromGroupExpressions) ::
     Batch("Operator Optimizations", FixedPoint(100),
+      // Join type conversion
+      OuterJoinToInnerJoin,
       // Operator push down
       SetOperationPushDown,
       SamplePushDown,
@@ -65,6 +67,70 @@ object DefaultOptimizer extends Optimizer {
       DecimalAggregates) ::
     Batch("LocalRelation", FixedPoint(100),
       ConvertToLocalRelation) :: Nil
+}
+
+/**
+ * Convert outer join to inner join when appropriate.
+ */
+object OuterJoinToInnerJoin extends Rule[LogicalPlan] with PredicateHelper {
+  /**
+   * Splits join condition expressions into three categories based on the attributes required
+   * to evaluate them.
+   * @return (canEvaluateInLeft, canEvaluateInRight, haveToEvaluateInBoth)
+   */
+  private def split(condition: Seq[Expression], left: LogicalPlan, right: LogicalPlan) = {
+    val (leftEvaluateCondition, rest) =
+      condition.partition(_.references subsetOf left.outputSet)
+    val (rightEvaluateCondition, commonCondition) =
+      rest.partition(_.references subsetOf right.outputSet)
+
+    (leftEvaluateCondition, rightEvaluateCondition, commonCondition)
+  }
+
+  /**
+   * Check the given expression is rejecting nulls
+   * @return true/false
+   */
+  private def isRejectNull(condition: Expression): Boolean = {
+    condition match {
+      case And(cond1, cond2) =>
+        isRejectNull(cond1) | isRejectNull(cond2)
+      case Or(cond1, cond2) =>
+        isRejectNull(cond1) & isRejectNull(cond2)
+      case IsNull(_) => false
+      case other => true
+    }
+  }
+
+  def apply(plan: LogicalPlan): LogicalPlan = plan transform {
+    // push the where condition down into join filter
+    case f@Filter(filterCondition, Join(left, right, joinType, joinCondition)) =>
+      val (leftFilterConditions, rightFilterConditions, commonFilterCondition) =
+        split(splitConjunctivePredicates(filterCondition), left, right)
+
+      val leftRejectingNull = if (leftFilterConditions.nonEmpty) {
+        isRejectNull(leftFilterConditions.reduceLeft(And))
+      } else false
+      val rightRejectingNull = if (rightFilterConditions.nonEmpty) {
+        isRejectNull(rightFilterConditions.reduceLeft(And))
+      } else false
+
+      val newJoinType = (joinType, leftRejectingNull, rightRejectingNull) match {
+        // RightOuter is converted to Inner when leftFilterConditions are rejecting null
+        case (RightOuter, true, _) => Inner
+        // LeftOuter is converted to Inner when rightFilterConditions are rejecting null
+        case (LeftOuter, _, true) => Inner
+        // FullOuter is converted to
+        //      Inner when both leftFilterConditions and rightFilterConditions are rejecting null
+        //      LeftOuter when only leftFilterConditions are rejecting null
+        //      RightOuter when only rightFilterConditions are rejecting null
+        case (FullOuter, true, true) => Inner
+        case (FullOuter, true, false) => LeftOuter
+        case (FullOuter, false, true) => RightOuter
+        case _ => joinType
+      }
+      Filter(filterCondition, Join(left, right, newJoinType, joinCondition))
+  }
 }
 
 /**
