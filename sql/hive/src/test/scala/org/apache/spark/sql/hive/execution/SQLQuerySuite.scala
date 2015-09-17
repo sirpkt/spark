@@ -245,6 +245,26 @@ class SQLQuerySuite extends QueryTest with SQLTestUtils with TestHiveSingleton {
     checkAnswer(query, Row(1, 1) :: Nil)
   }
 
+  test("Join conversion") {
+    val df1 = Seq((1, 1), (2, 2), (3, 3)).toDF("c1", "c2")
+    val df2 = Seq((1, 2), (2, 4), (3, 6)).toDF("c1", "c2")
+    df1.registerTempTable("table1")
+    df2.registerTempTable("table2")
+
+    val query = sql(
+    """
+      |SELECT *
+      |FROM
+      |  table1 LEFT OUTER JOIN table2
+      |ON
+      |  table1.c1 = table2.c1
+      |WHERE
+      |  table2.c2 > 5
+    """.stripMargin)
+
+    checkAnswer(query, Row(3, 3, 3, 6) :: Nil)
+  }
+
   test("explode nested Field") {
     Seq(NestedArray1(NestedArray2(Seq(1, 2, 3)))).toDF.registerTempTable("nestedArray")
     checkAnswer(
